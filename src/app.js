@@ -38,16 +38,28 @@ app.use(helmet())
 app.use(express.json())
 app.use(morgan('dev'))
 // Restrictive CORS: allow only specified origins (comma-separated in ALLOWED_ORIGINS)
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean)
-app.use(cors({
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map(s => s.trim().replace(/\/$/, '')) // normalize: remove trailing slash
+  .filter(Boolean)
+
+const corsOptions = {
   origin: (origin, cb) => {
     // Allow non-browser requests (like curl or server-to-server without Origin)
     if (!origin) return cb(null, true)
-    if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) return cb(null, true)
-    return cb(new Error('CORS not allowed from this origin'))
+    const normalized = origin.replace(/\/$/, '')
+    if (allowedOrigins.length === 0) return cb(null, true)
+    if (allowedOrigins.includes(normalized)) return cb(null, true)
+    // Soft-deny to avoid throwing and breaking preflight
+    return cb(null, false)
   },
   credentials: true,
-}))
+  optionsSuccessStatus: 204,
+}
+
+// Apply CORS and explicitly handle preflight for all routes
+app.use(cors(corsOptions))
+app.options('*', cors(corsOptions))
 
 // (uploads static already configured above)
 
