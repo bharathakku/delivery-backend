@@ -17,6 +17,7 @@ import chatRouter from './routes/chat.js'
 import addressesRouter from './routes/addresses.js'
 import zonesRouter from './routes/zones.js'
 import pricingRouter from './routes/pricing.js'
+import analyticsRouter from './routes/analytics.js'
 import path from 'path'
 
 const app = express()
@@ -69,6 +70,7 @@ app.use('/api/chat', chatRouter)
 app.use('/api/addresses', addressesRouter)
 app.use('/api/zones', zonesRouter)
 app.use('/api/pricing', pricingRouter)
+app.use('/api/analytics', analyticsRouter)
 
 // Swagger docs (disable CSP for compatibility with browser AV extensions)
 app.use('/api/docs', helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }))
