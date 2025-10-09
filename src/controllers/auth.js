@@ -16,8 +16,25 @@ function signToken(user) {
 
 // Unified sendOtp for both /send-otp and /phone/send
 export const sendOtp = async (req, res) => {
-  const { phone, role } = req.body
+  const { phone, role, mode } = req.body
   if (!phone || !/^\+?\d{10,15}$/.test(phone)) return res.status(400).json({ error: 'Invalid phone' })
+  // Enforce existence rules based on mode for driver flow
+  try {
+    const normalizedRole = (role === 'partner' ? 'driver' : role) || 'customer'
+    const userForPhone = await User.findOne({ phone, role: normalizedRole })
+    if ((mode === 'login' || mode === 'signin') && normalizedRole === 'driver') {
+      if (!userForPhone) {
+        return res.status(404).json({ error: 'No partner account found for this number. Please sign up.' })
+      }
+    }
+    if ((mode === 'signup' || mode === 'register') && normalizedRole === 'driver') {
+      if (userForPhone) {
+        return res.status(409).json({ error: 'Partner account already exists. Please log in.' })
+      }
+    }
+  } catch (e) {
+    try { console.warn('[sendOtp] existence check warning:', e?.message || String(e)) } catch {}
+  }
   const code = ('' + Math.floor(100000 + Math.random() * 900000))
   const token = crypto.randomBytes(16).toString('hex')
   const expiresAt = new Date(Date.now() + 1000 * 60 * 5)
