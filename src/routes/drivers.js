@@ -191,7 +191,10 @@ router.put('/me', requireAuth, requireRole('driver'), async (req, res) => {
   }
 })
 
-export default router
+// Lightweight ping to verify router is mounted in prod
+router.get('/ping', (_req, res) => {
+  res.json({ ok: true, service: 'drivers', time: new Date().toISOString() })
+})
 
 // Driver: upload KYC documents (Aadhaar/PAN/DL/RC/Vehicle Photo)
 // Accept multipart form-data with fields: aadhar, pan, drivingLicense, vehicleRC, vehiclePicture
@@ -208,8 +211,15 @@ router.post(
   ]),
   async (req, res) => {
     try {
-      const driver = await Driver.findOne({ userId: req.user.id })
-      if (!driver) return res.status(404).json({ error: 'Partner profile not found' })
+      let driver = await Driver.findOne({ userId: req.user.id })
+      // Auto-create driver profile if missing so KYC can proceed during signup
+      if (!driver) {
+        driver = await Driver.findOneAndUpdate(
+          { userId: req.user.id },
+          { $setOnInsert: { userId: req.user.id, isOnline: false } },
+          { new: true, upsert: true }
+        )
+      }
 
       const files = req.files || {}
       const toPush = []
