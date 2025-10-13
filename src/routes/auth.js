@@ -35,14 +35,28 @@ router.post('/signup', async (req, res) => {
 
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body || {}
-    if (!email || !password) return res.status(400).json({ error: 'Missing credentials' })
-    const user = await User.findOne({ email })
+    let { email, phone, password } = req.body || {}
+    email = typeof email === 'string' ? email.trim().toLowerCase() : ''
+    phone = typeof phone === 'string' ? phone.trim() : ''
+    if (!password) return res.status(400).json({ error: 'Missing credentials' })
+
+    // Support login via email OR phone
+    let user = null
+    if (email) {
+      user = await User.findOne({ email })
+    } else if (phone) {
+      // Normalize phone: ensure starts with +, allow +91XXXXXXXXXX
+      const normalized = phone.startsWith('+') ? phone : `+${phone.replace(/\D/g, '')}`
+      user = await User.findOne({ phone: normalized })
+    } else {
+      return res.status(400).json({ error: 'Missing credentials' })
+    }
+
     if (!user) return res.status(401).json({ error: 'Invalid credentials' })
     const ok = await user.comparePassword(password)
     if (!ok) return res.status(401).json({ error: 'Invalid credentials' })
     const token = signToken(user)
-    res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role } })
+    res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role, phone: user.phone } })
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Login failed' })
