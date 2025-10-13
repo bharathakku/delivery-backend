@@ -257,6 +257,38 @@ router.post(
   }
 )
 
+// Fallback: partner documents upload (single document at a time)
+// Accepts multipart form-data with: document (file), type (aadhar|pan|drivingLicense|vehicleRC|vehiclePicture)
+router.post(
+  '/partner/documents',
+  requireAuth,
+  requireRole('driver'),
+  upload.single('document'),
+  async (req, res) => {
+    try {
+      const driver = await Driver.findOne({ userId: req.user.id })
+      if (!driver) return res.status(404).json({ error: 'Partner profile not found' })
+
+      const file = req.file
+      const { type } = req.body || {}
+      const allowed = new Set(['aadhar', 'pan', 'drivingLicense', 'vehicleRC', 'vehiclePicture'])
+
+      if (!file) return res.status(400).json({ error: 'No file uploaded' })
+      if (!allowed.has(type)) return res.status(400).json({ error: 'Invalid document type' })
+
+      const relPath = path.join('kyc', path.basename(file.path))
+      const doc = { type, url: `/uploads/${relPath}`, status: 'pending' }
+      driver.documents.push(doc)
+      await driver.save()
+
+      res.status(201).json({ ok: true, document: doc, driverId: driver._id })
+    } catch (err) {
+      console.error(err)
+      res.status(500).json({ error: 'Upload failed' })
+    }
+  }
+)
+
 // Admin: update a specific document's status (approved/rejected/pending)
 router.patch('/:id/documents/:docId', requireAuth, requireRole('admin'), async (req, res) => {
   const { status } = req.body || {}
