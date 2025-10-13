@@ -173,11 +173,22 @@ router.patch('/me/online', requireAuth, async (req, res) => {
   res.json({ ok: true, isOnline: driver.isOnline })
 })
 
-// Update company/partner info on unified Driver model
+// Create/Update partner info on Driver model (upsert if missing)
 router.put('/me', requireAuth, requireRole('driver'), async (req, res) => {
-  const driver = await Driver.findOneAndUpdate({ userId: req.user.id }, req.body, { new: true })
-  if (!driver) return res.status(404).json({ error: 'Partner profile not found' })
-  res.json(driver)
+  try {
+    const driver = await Driver.findOneAndUpdate(
+      { userId: req.user.id },
+      { 
+        $set: req.body || {},
+        $setOnInsert: { userId: req.user.id, isOnline: false }
+      },
+      { new: true, upsert: true }
+    )
+    res.json(driver)
+  } catch (e) {
+    console.error('PUT /drivers/me failed:', e)
+    res.status(500).json({ error: 'Failed to save partner profile' })
+  }
 })
 
 export default router
