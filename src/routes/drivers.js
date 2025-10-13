@@ -365,4 +365,4 @@ router.post('/:id/approve', requireAuth, requireRole('admin'), async (req, res) 
   res.json({ ok: true, driver, notified })
 })
 
-
+export default router
