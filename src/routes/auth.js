@@ -70,12 +70,24 @@ router.post('/login', async (req, res) => {
     try {
       ok = await user.comparePassword(password)
     } catch {}
-    // Backward-compatible: if stored password is not a bcrypt hash, allow plaintext match once and migrate
+    // Backward-compatible migrations
     const looksHashed = typeof user.passwordHash === 'string' && user.passwordHash.startsWith('$2')
-    if (!ok && !looksHashed && typeof user.passwordHash === 'string') {
+    // Case 1: passwordHash is a plaintext string (old data)
+    if (!ok && typeof user.passwordHash === 'string' && !looksHashed) {
       if (user.passwordHash === password) {
         try {
           user.passwordHash = await User.hashPassword(password)
+          await user.save()
+          ok = true
+        } catch {}
+      }
+    }
+    // Case 2: legacy field 'password' present instead of 'passwordHash'
+    if (!ok && typeof user.password === 'string') {
+      if (user.password === password) {
+        try {
+          user.passwordHash = await User.hashPassword(password)
+          user.password = undefined
           await user.save()
           ok = true
         } catch {}
