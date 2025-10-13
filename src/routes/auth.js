@@ -56,10 +56,12 @@ router.post('/login', async (req, res) => {
     let user = null
     if (email) {
       user = await User.findOne({ email })
+      try { console.log('[Auth/Login] lookup=email', { email, found: !!user }) } catch {}
     } else if (phone) {
       // Normalize phone: ensure starts with +, allow +91XXXXXXXXXX
       const normalized = phone.startsWith('+') ? phone : `+${phone.replace(/\D/g, '')}`
       user = await User.findOne({ phone: normalized })
+      try { console.log('[Auth/Login] lookup=phone', { phone: normalized, found: !!user }) } catch {}
     } else {
       return res.status(400).json({ error: 'Missing credentials' })
     }
@@ -72,6 +74,7 @@ router.post('/login', async (req, res) => {
     } catch {}
     // Backward-compatible migrations
     const looksHashed = typeof user.passwordHash === 'string' && user.passwordHash.startsWith('$2')
+    try { console.log('[Auth/Login] userFound', { id: String(user._id), hasPhone: !!user.phone, looksHashed, okInitial: ok }) } catch {}
     // Case 1: passwordHash is a plaintext string (old data)
     if (!ok && typeof user.passwordHash === 'string' && !looksHashed) {
       if (user.passwordHash === password) {
@@ -79,7 +82,8 @@ router.post('/login', async (req, res) => {
           user.passwordHash = await User.hashPassword(password)
           await user.save()
           ok = true
-        } catch {}
+          try { console.log('[Auth/Login] migrated plaintext->bcrypt', { id: String(user._id) }) } catch {}
+        } catch (e) { try { console.warn('[Auth/Login] migrate plaintext failed', { id: String(user._id), msg: e?.message }) } catch {} }
       }
     }
     // Case 2: legacy field 'password' present instead of 'passwordHash'
@@ -90,14 +94,16 @@ router.post('/login', async (req, res) => {
           user.password = undefined
           await user.save()
           ok = true
-        } catch {}
+          try { console.log('[Auth/Login] migrated legacy password field', { id: String(user._id) }) } catch {}
+        } catch (e) { try { console.warn('[Auth/Login] migrate legacy field failed', { id: String(user._id), msg: e?.message }) } catch {} }
       }
     }
+    try { if (!ok) console.warn('[Auth/Login] invalid creds after checks', { id: String(user._id) }) } catch {}
     if (!ok) return res.status(401).json({ error: 'Invalid credentials' })
     const token = signToken(user)
     res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role, phone: user.phone } })
   } catch (err) {
-    console.error(err)
+    try { console.error('[Auth/Login] error', err?.message || err) } catch {}
     res.status(500).json({ error: 'Login failed' })
   }
 })
