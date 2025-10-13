@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import jwt from 'jsonwebtoken'
 import crypto from 'crypto'
+import bcrypt from 'bcryptjs'
 import User from '../models/User.js'
 import VerificationToken from '../models/VerificationToken.js'
 import { sendOtp, verifyOtp } from '../controllers/auth.js'
@@ -64,7 +65,22 @@ router.post('/login', async (req, res) => {
     }
 
     if (!user) return res.status(401).json({ error: 'Invalid credentials' })
-    const ok = await user.comparePassword(password)
+    // Primary: bcrypt compare
+    let ok = false
+    try {
+      ok = await user.comparePassword(password)
+    } catch {}
+    // Backward-compatible: if stored password is not a bcrypt hash, allow plaintext match once and migrate
+    const looksHashed = typeof user.passwordHash === 'string' && user.passwordHash.startsWith('$2')
+    if (!ok && !looksHashed && typeof user.passwordHash === 'string') {
+      if (user.passwordHash === password) {
+        try {
+          user.passwordHash = await User.hashPassword(password)
+          await user.save()
+          ok = true
+        } catch {}
+      }
+    }
     if (!ok) return res.status(401).json({ error: 'Invalid credentials' })
     const token = signToken(user)
     res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role, phone: user.phone } })
