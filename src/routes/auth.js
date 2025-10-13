@@ -16,17 +16,28 @@ function signToken(user) {
 
 router.post('/signup', async (req, res) => {
   try {
-    let { name, email, password, role } = req.body || {}
+    let { name, email, phone, password, role } = req.body || {}
+    email = typeof email === 'string' ? email.trim().toLowerCase() : ''
+    phone = typeof phone === 'string' ? phone.trim() : ''
     if (!name || !email || !password || !role) return res.status(400).json({ error: 'Missing fields' })
     // Normalize legacy 'partner' role to 'driver'
     if (role === 'partner') role = 'driver'
     if (!['admin', 'customer', 'driver'].includes(role)) return res.status(400).json({ error: 'Invalid role' })
-    const exists = await User.findOne({ email })
-    if (exists) return res.status(409).json({ error: 'Email already registered' })
+
+    // Ensure unique email and, if provided, unique phone
+    const existsByEmail = await User.findOne({ email })
+    if (existsByEmail) return res.status(409).json({ error: 'Email already registered' })
+    let normalizedPhone = ''
+    if (phone) {
+      normalizedPhone = phone.startsWith('+') ? phone : `+${phone.replace(/\D/g, '')}`
+      const existsByPhone = await User.findOne({ phone: normalizedPhone })
+      if (existsByPhone) return res.status(409).json({ error: 'Phone already registered' })
+    }
+
     const passwordHash = await User.hashPassword(password)
-    const user = await User.create({ name, email, passwordHash, role, isEmailVerified: false })
+    const user = await User.create({ name, email, phone: normalizedPhone || undefined, passwordHash, role, isEmailVerified: false })
     const token = signToken(user)
-    res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role } })
+    res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role, phone: user.phone } })
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Signup failed' })
