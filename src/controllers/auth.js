@@ -2,7 +2,6 @@ import crypto from 'crypto'
 import User from '../models/User.js'
 import VerificationToken from '../models/VerificationToken.js'
 import jwt from 'jsonwebtoken'
-import twilio from 'twilio'
 import Driver from '../models/Driver.js'
 
 function signToken(user) {
@@ -11,8 +10,6 @@ function signToken(user) {
   const expiresIn = '7d'
   return jwt.sign(payload, secret, { expiresIn })
 }
-
-// Twilio credentials will be read per-request to ensure environment variables are available
 
 // Unified sendOtp for both /send-otp and /phone/send
 export const sendOtp = async (req, res) => {
@@ -40,55 +37,8 @@ export const sendOtp = async (req, res) => {
   const expiresAt = new Date(Date.now() + 1000 * 60 * 5)
   await VerificationToken.create({ type: 'phone', token, phone, code, expiresAt })
 
-  // Read Twilio env at request time
-  const twilioSid = (process.env.TWILIO_SID || '').trim()
-  const twilioAuth = (process.env.TWILIO_AUTH_TOKEN || '').trim()
-  const twilioNumber = (process.env.TWILIO_PHONE_NUMBER || '').trim()
-  const messagingServiceSid = (process.env.TWILIO_MESSAGING_SERVICE_SID || '').trim()
-  const twilioClient = (twilioSid && twilioAuth) ? twilio(twilioSid, twilioAuth) : null
-
-  // Determine if we can attempt SMS via Twilio (client plus either number or messaging service SID)
-  const canSendSms = !!(twilioClient && (twilioNumber || messagingServiceSid))
-  // Diagnostics to understand configuration in runtime (do not log secrets)
-  try {
-    console.log('[OTP] Twilio config:', {
-      haveSid: !!twilioSid,
-      haveAuth: !!twilioAuth,
-      haveNumber: !!twilioNumber,
-      haveMessagingServiceSid: !!messagingServiceSid,
-      canSendSms,
-    })
-  } catch {}
-
-  // If Twilio is configured, attempt to send SMS regardless of NODE_ENV
-  if (canSendSms) {
-    try {
-      const msgParams = {
-        body: `Your OTP is ${code}`,
-        to: phone,
-      }
-      if (messagingServiceSid) {
-        msgParams.messagingServiceSid = messagingServiceSid
-        try { console.log('[OTP] Using Messaging Service SID for SMS') } catch {}
-      } else if (twilioNumber) {
-        msgParams.from = twilioNumber
-        try { console.log('[OTP] Using From number for SMS') } catch {}
-      }
-      const msg = await twilioClient.messages.create(msgParams)
-      return res.json({ ok: true, token, sent: true, provider: 'twilio', messageSid: msg?.sid })
-    } catch (err) {
-      console.error('Twilio SMS error:', {
-        message: err?.message || String(err),
-        code: err?.code,
-        moreInfo: err?.moreInfo,
-      })
-      // Fall back to returning devCode to unblock testing if SMS fails
-      return res.json({ ok: true, token, devCode: code, sent: false, provider: 'twilio' })
-    }
-  }
-
-  // Twilio not configured: return devCode for convenience
-  return res.json({ ok: true, token, devCode: code, sent: false, provider: 'dev' })
+  // Always return code on response for on-screen verification flow (no SMS provider)
+  return res.json({ ok: true, token, devCode: code, sent: false, provider: 'onscreen' })
 }
 
 // Unified verifyOtp for both /verify-otp and /phone/verify
