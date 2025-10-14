@@ -35,7 +35,7 @@ const DriverSchema = new mongoose.Schema(
         status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
       },
     ],
-    isActive: { type: Boolean, default: true },
+    isActive: { type: Boolean, default: false },
 
     // Compatibility: keep partnerId optional for older data
     partnerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Partner' },
