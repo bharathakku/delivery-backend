@@ -17,6 +17,41 @@ if (!fs.existsSync(kycDir)) {
   fs.mkdirSync(kycDir, { recursive: true })
 }
 
+// Public: availability snapshot for customer app (no PII)
+// Query: lat, lng, maxDistanceMeters (default 15000)
+router.get('/availability', async (req, res) => {
+  try {
+    const { lat, lng, maxDistanceMeters } = req.query || {}
+    const hasNear = lat && lng
+    const q = { isOnline: true, isActive: true }
+    let docs
+    if (hasNear) {
+      const maxD = Math.max(0, Number(maxDistanceMeters) || 15000)
+      q.location = {
+        $near: {
+          $geometry: { type: 'Point', coordinates: [Number(lng), Number(lat)] },
+          $maxDistance: maxD,
+        },
+      }
+      docs = await Driver.find(q).select('vehicleType')
+    } else {
+      docs = await Driver.find(q).select('vehicleType').limit(500)
+    }
+    const counts = {}
+    for (const d of docs) {
+      const vt = String(d.vehicleType || '').toLowerCase()
+      let key = 'two-wheeler'
+      if (vt.includes('three') || vt.includes('auto')) key = 'three-wheeler'
+      else if (vt.includes('truck') || vt.includes('tempo') || vt.includes('heavy')) key = 'heavy-truck'
+      counts[key] = (counts[key] || 0) + 1
+    }
+    res.json({ ok: true, counts })
+  } catch (e) {
+    console.error('GET /drivers/availability failed:', e)
+    res.status(500).json({ ok: false, error: 'Failed to compute availability' })
+  }
+})
+
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, kycDir),
   filename: (_req, file, cb) => {
