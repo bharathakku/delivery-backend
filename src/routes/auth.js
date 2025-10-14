@@ -54,12 +54,30 @@ router.post('/login', async (req, res) => {
 
     // Support login via email OR phone
     let user = null
+    // If user typed a phone number into the email field, detect and normalize
+    let inferredPhone = ''
+    if (!phone && email) {
+      const digitsFromEmail = (email || '').replace(/\D/g, '')
+      if (/^\d{10}$/.test(digitsFromEmail)) {
+        inferredPhone = `+91${digitsFromEmail}`
+      } else if (/^\+?\d{10,15}$/.test(email)) {
+        inferredPhone = email.startsWith('+') ? email : `+${email.replace(/\D/g, '')}`
+      }
+    }
+
     if (email) {
       user = await User.findOne({ email })
       try { console.log('[Auth/Login] lookup=email', { email, found: !!user }) } catch {}
-    } else if (phone) {
-      // Normalize phone: ensure starts with +, allow +91XXXXXXXXXX
-      const normalized = phone.startsWith('+') ? phone : `+${phone.replace(/\D/g, '')}`
+      // If not found by email and we inferred a phone, try phone lookup as a fallback
+      if (!user && inferredPhone) {
+        const normalized = inferredPhone
+        user = await User.findOne({ phone: normalized })
+        try { console.log('[Auth/Login] fallback lookup=phoneFromEmail', { phone: normalized, found: !!user }) } catch {}
+      }
+    } else if (phone || inferredPhone) {
+      // Normalize phone: ensure starts with +
+      const src = phone || inferredPhone
+      const normalized = src.startsWith('+') ? src : `+${src.replace(/\D/g, '')}`
       user = await User.findOne({ phone: normalized })
       try { console.log('[Auth/Login] lookup=phone', { phone: normalized, found: !!user }) } catch {}
     } else {
