@@ -1,7 +1,23 @@
 import dotenv from 'dotenv'
 import path from 'path'
+import fs from 'fs'
+
+// Debug: Check if .env file exists
+const envPath = path.resolve(process.cwd(), '.env')
+console.log('Loading .env from:', envPath)
+console.log('File exists:', fs.existsSync(envPath))
+
 // Explicitly load .env from the backend working directory
-dotenv.config({ path: path.resolve(process.cwd(), '.env') })
+dotenv.config({ path: envPath })
+
+// Debug: Log all environment variables (be careful with sensitive data in production)
+console.log('Environment variables:', {
+  NODE_ENV: process.env.NODE_ENV,
+  PORT: process.env.PORT,
+  RAZORPAY_KEY_ID: process.env.RAZORPAY_KEY_ID ? 'Set' : 'Missing',
+  RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET ? 'Set' : 'Missing',
+  MONGO_URI: process.env.MONGO_URI ? 'Set' : 'Missing'
+})
 
 import { createServer } from 'http'
 import app from './src/app.js'

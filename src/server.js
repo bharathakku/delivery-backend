@@ -1,7 +1,16 @@
+import 'dotenv/config' // Load .env file
 import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
 import morgan from 'morgan'
+
+// Debug: Log environment variables
+console.log('Current working directory:', process.cwd())
+console.log('Razorpay environment variables:', {
+  RAZORPAY_KEY_ID: process.env.RAZORPAY_KEY_ID ? 'Set' : 'Not set',
+  RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET ? 'Set' : 'Not set',
+  NODE_ENV: process.env.NODE_ENV || 'development'
+})
 
 const app = express()
 

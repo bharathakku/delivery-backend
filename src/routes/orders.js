@@ -65,6 +65,28 @@ const storage = multer.diskStorage({
 })
 const upload = multer({ storage, limits: { fileSize: 8 * 1024 * 1024 } })
 
+// Get orders assigned to the current driver
+router.get('/assigned/me', requireAuth, async (req, res) => {
+  try {
+    // Find the driver document for the current user
+    const driver = await Driver.findOne({ userId: req.user.id });
+    if (!driver) {
+      return res.status(403).json({ error: 'Driver profile not found' });
+    }
+
+    // Find orders assigned to this driver
+    const orders = await Order.find({ 
+      driverId: driver._id,
+      status: { $in: ['assigned', 'accepted', 'picked_up', 'in_transit'] }
+    }).sort({ createdAt: -1 });
+
+    res.json(orders);
+  } catch (err) {
+    console.error('Error fetching assigned orders:', err);
+    res.status(500).json({ error: 'Failed to fetch assigned orders' });
+  }
+});
+
 // Driver: upload proof photo (pickup/delivery)
 router.post('/:id/proof', requireAuth, upload.single('proof'), async (req, res) => {
   try {
