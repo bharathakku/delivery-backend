@@ -91,7 +91,15 @@ router.get('/', requireAuth, requireRole('admin'), async (req, res) => {
     const q = {}
     if (typeof online !== 'undefined') q.isOnline = String(online) === 'true'
     if (typeof active !== 'undefined') q.isActive = String(active) === 'true'
-    if (vehicleType) q.vehicleType = vehicleType
+    // Vehicle type: allow synonyms via regex
+    if (vehicleType) {
+      const vt = String(vehicleType).toLowerCase()
+      let rx
+      if (vt.includes('two')) rx = /(two|2|bike|motor|scoot|scooter)/i
+      else if (vt.includes('three') || vt.includes('3') || vt.includes('auto')) rx = /(three|3|auto|rick)/i
+      else rx = /(truck|tempo|heavy|lcv)/i
+      q.vehicleType = { $regex: rx }
+    }
     // Base query
     let query = Driver.find(q).populate('userId', 'name email phone')
     // Optional near filtering
@@ -184,12 +192,15 @@ router.post('/:id/subscription/remind', requireAuth, requireRole('admin'), async
 // Driver: update location
 router.patch('/me/location', requireAuth, async (req, res) => {
   const { lat, lng } = req.body || {}
+  // Avoid setting 'location' in both $set and $setOnInsert which triggers
+  // ConflictingUpdateOperators in newer MongoDB versions.
+  const update = {
+    $set: { location: { type: 'Point', coordinates: [lng, lat] } },
+    $setOnInsert: { userId: req.user.id, isOnline: false },
+  }
   const driver = await Driver.findOneAndUpdate(
     { userId: req.user.id },
-    { 
-      $set: { location: { type: 'Point', coordinates: [lng, lat] } },
-      $setOnInsert: { userId: req.user.id, isOnline: false, location: { type: 'Point', coordinates: [lng || 0, lat || 0] } }
-    },
+    update,
     { new: true, upsert: true }
   )
   res.json(driver)
@@ -242,8 +253,28 @@ router.patch('/me/online', requireAuth, async (req, res) => {
 
   // Toggle online state
   driver.isOnline = !!isOnline
+  if (driver.isOnline) driver.lastSeenAt = new Date()
   await driver.save()
   res.json({ ok: true, isOnline: driver.isOnline })
+})
+
+// Driver heartbeat: keeps presence alive while app/tab is open
+router.post('/me/heartbeat', requireAuth, async (req, res) => {
+  try {
+    const { lat, lng } = req.body || {}
+    const driver = await Driver.findOne({ userId: req.user.id })
+    if (!driver) return res.status(404).json({ ok: false, error: 'Driver not found' })
+    // Update timestamp and optionally location
+    driver.lastSeenAt = new Date()
+    if (typeof lat === 'number' && typeof lng === 'number') {
+      driver.location = { type: 'Point', coordinates: [lng, lat] }
+    }
+    await driver.save()
+    res.json({ ok: true, at: driver.lastSeenAt })
+  } catch (e) {
+    console.error('heartbeat failed', e)
+    res.status(500).json({ ok: false })
+  }
 })
 
 // Create/Update partner info on Driver model (upsert if missing)

@@ -15,6 +15,8 @@ const DriverSchema = new mongoose.Schema(
       coordinates: { type: [Number], default: [0, 0] }, // [lng, lat]
     },
     capacityKg: { type: Number, default: 50 },
+    // Live presence heartbeat
+    lastSeenAt: { type: Date, default: null },
     
     // Partner/company details (unified model for Partner + Driver)
     companyName: { type: String },
