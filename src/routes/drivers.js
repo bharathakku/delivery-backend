@@ -3,6 +3,7 @@ import multer from 'multer'
 import path from 'path'
 import fs from 'fs'
 import Driver from '../models/Driver.js'
+import Zone from '../models/Zone.js'
 import User from '../models/User.js'
 import Order from '../models/Order.js'
 import { requireAuth, requireRole } from '../middleware/auth.js'
@@ -196,15 +197,52 @@ router.patch('/me/location', requireAuth, async (req, res) => {
 
 // Driver: toggle online/offline
 router.patch('/me/online', requireAuth, async (req, res) => {
-  const { isOnline } = req.body || {}
-  const driver = await Driver.findOneAndUpdate(
-    { userId: req.user.id },
-    { 
-      $set: { isOnline: !!isOnline },
-      $setOnInsert: { userId: req.user.id, location: { type: 'Point', coordinates: [0, 0] } }
-    },
-    { new: true, upsert: true }
-  )
+  const { isOnline, lat, lng } = req.body || {}
+
+  // Lightweight point-in-polygon (ray casting)
+  const pointInPoly = (point, poly) => {
+    // point: [lng, lat]; poly: array of {lat,lng}
+    const x = point[0], y = point[1]
+    let inside = false
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const xi = poly[i].lng, yi = poly[i].lat
+      const xj = poly[j].lng, yj = poly[j].lat
+      const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / ((yj - yi) || 1e-12) + xi)
+      if (intersect) inside = !inside
+    }
+    return inside
+  }
+
+  // Ensure driver exists and has a location
+  let driver = await Driver.findOne({ userId: req.user.id })
+  if (!driver) {
+    driver = await Driver.create({ userId: req.user.id, isOnline: false, location: { type: 'Point', coordinates: [0, 0] } })
+  }
+
+  // If client passed latest lat/lng, update cached location first
+  if (typeof lat === 'number' && typeof lng === 'number') {
+    driver.location = { type: 'Point', coordinates: [lng, lat] }
+    await driver.save()
+  }
+
+  if (isOnline) {
+    // Validate the driver's current location inside any Active zone
+    const coords = driver.location?.coordinates
+    const curLng = Array.isArray(coords) ? Number(coords[0]) : NaN
+    const curLat = Array.isArray(coords) ? Number(coords[1]) : NaN
+    if (!Number.isFinite(curLat) || !Number.isFinite(curLng)) {
+      return res.status(400).json({ ok: false, error: 'Location unavailable. Share location before going online.' })
+    }
+    const zones = await Zone.find({ status: 'Active' }).select('coordinates')
+    const insideAny = zones.some(z => Array.isArray(z.coordinates) && z.coordinates.length >= 3 && pointInPoly([curLng, curLat], z.coordinates))
+    if (!insideAny) {
+      return res.status(403).json({ ok: false, error: 'You are outside the service area. Move into a covered zone to go online.' })
+    }
+  }
+
+  // Toggle online state
+  driver.isOnline = !!isOnline
+  await driver.save()
   res.json({ ok: true, isOnline: driver.isOnline })
 })
 
