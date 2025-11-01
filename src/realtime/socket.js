@@ -252,39 +252,16 @@ export function initSocket(server) {
       }
     });
     
-    // Handle client disconnection
+    // Handle client disconnection (do not flip driver online state here)
     socket.on('disconnect', async () => {
       console.log('Client disconnected:', socket.id);
-      
-      // Check if this was an admin connection
+      // Cleanup admin tracking room record
       const adminRoom = adminRooms.get(socket.id);
       if (adminRoom) {
         adminRooms.delete(socket.id);
         console.log(`Admin ${socket.id} stopped tracking`);
       }
-      
-      // Check if this was a driver connection
-      const driverId = [...socket.rooms].find(room => room.startsWith('driver:'))?.replace('driver:', '');
-      if (driverId) {
-        try {
-          // Update driver's online status
-          await Driver.findByIdAndUpdate(driverId, { 
-            isOnline: false,
-            lastSeen: new Date()
-          });
-          
-          // Notify admins that driver is offline
-          ioInstance.emit('driver:status', { 
-            driverId, 
-            isOnline: false,
-            lastSeen: new Date()
-          });
-          
-          console.log(`Driver ${driverId} disconnected`);
-        } catch (error) {
-          console.error('Error updating driver status on disconnect:', error);
-        }
-      }
+      // Presence is handled by heartbeat + sweeper; no state change on disconnect
     });
     
     // Existing code for order and chat functionality
